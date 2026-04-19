@@ -27,6 +27,7 @@ export default function SessionView({ activity }: SessionViewProps) {
     const [repCount, setRepCount] = useState(0);
     const [feedback, setFeedback] = useState<string>("Initializing coach...");
     const [timer, setTimer] = useState(0);
+    const [isEndingSession, setIsEndingSession] = useState(false);
     
     // Mobile UI State
     const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -54,6 +55,7 @@ export default function SessionView({ activity }: SessionViewProps) {
     const lastApiCallTimeRef = useRef<number>(0);
     const lastLandmarksRef = useRef<NormalizedLandmark[]>([]);
     const isFetchingRef = useRef(false);
+    const isEndingSessionRef = useRef(false);
     const smoothedAngleRef = useRef<number>(0);
     const angleHistoryRef = useRef<{angle: number, time: number, phase: string, velocity: number}[]>([]);
     const poseQualityRef = useRef<number>(0);
@@ -63,6 +65,30 @@ export default function SessionView({ activity }: SessionViewProps) {
         return {
             video: isMobileViewport ? mobileVideoRef.current : desktopVideoRef.current,
             canvas: isMobileViewport ? mobileCanvasRef.current : desktopCanvasRef.current,
+        };
+    }, []);
+
+    const stopLiveSessionResources = useCallback(() => {
+        const mobileStream = mobileVideoRef.current?.srcObject as MediaStream | null;
+        const desktopStream = desktopVideoRef.current?.srcObject as MediaStream | null;
+        mobileStream?.getTracks().forEach(t => t.stop());
+        desktopStream?.getTracks().forEach(t => t.stop());
+
+        if (poseLandmarkerRef.current) {
+            poseLandmarkerRef.current.close();
+            poseLandmarkerRef.current = null;
+        }
+
+        if (typeof window !== "undefined" && "speechSynthesis" in window) {
+            window.speechSynthesis.cancel();
+        }
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (typeof window !== "undefined" && "speechSynthesis" in window) {
+                window.speechSynthesis.cancel();
+            }
         };
     }, []);
 
@@ -264,7 +290,7 @@ export default function SessionView({ activity }: SessionViewProps) {
                                 bufferRawFrame(video);
                             }
 
-                            if (Date.now() - lastApiCallTimeRef.current > 8000 && framesBufferRef.current.length > 0) {
+                            if (!isEndingSessionRef.current && Date.now() - lastApiCallTimeRef.current > 8000 && framesBufferRef.current.length > 0) {
                                 if (window.speechSynthesis && !window.speechSynthesis.speaking && !isFetchingRef.current) {
                                     sendToCoach();
                                 }
@@ -286,15 +312,9 @@ export default function SessionView({ activity }: SessionViewProps) {
         return () => {
             active = false;
             cancelAnimationFrame(animFrameSync);
-            const mobileStream = mobileVideoRef.current?.srcObject as MediaStream | null;
-            const desktopStream = desktopVideoRef.current?.srcObject as MediaStream | null;
-            mobileStream?.getTracks().forEach(t => t.stop());
-            desktopStream?.getTracks().forEach(t => t.stop());
-            if (poseLandmarkerRef.current) {
-                poseLandmarkerRef.current.close();
-            }
+            stopLiveSessionResources();
         };
-    }, [facingMode, getActiveMediaElements]);
+    }, [facingMode, getActiveMediaElements, stopLiveSessionResources]);
 
     const bufferRawFrame = (video: HTMLVideoElement) => {
         try {
@@ -314,7 +334,7 @@ export default function SessionView({ activity }: SessionViewProps) {
     };
 
     const sendToCoach = () => {
-        if (isFetchingRef.current) return;
+        if (isFetchingRef.current || isEndingSessionRef.current) return;
         
         lastApiCallTimeRef.current = Date.now();
         isFetchingRef.current = true;
@@ -349,7 +369,7 @@ export default function SessionView({ activity }: SessionViewProps) {
         })
         .then(res => res.json())
         .then(data => {
-            if (data.text) {
+            if (!isEndingSessionRef.current && data.text) {
                 setFeedback(data.text);
                 speakFeedback(data.text);
             }
@@ -360,13 +380,13 @@ export default function SessionView({ activity }: SessionViewProps) {
     };
 
     const speakFeedback = (text: string) => {
-        if (!("speechSynthesis" in window)) return;
-        speechSynthesis.cancel();
+        if (isEndingSessionRef.current || !("speechSynthesis" in window)) return;
+        window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = 1.05;
         utterance.pitch = 1.0;
         (window as any)._utterance = utterance;
-        speechSynthesis.speak(utterance);
+        window.speechSynthesis.speak(utterance);
     };
 
 function StatPill({ label, value, tone }: { label: string; value: string; tone: "rose" | "emerald" | "blue" }) {
@@ -607,17 +627,17 @@ function InfoChip({ label, value }: { label: string; value: string | number }) {
     };
 
     const endSession = async () => {
-        // Stop camera
-        const mobileStream = mobileVideoRef.current?.srcObject as MediaStream | null;
-        const desktopStream = desktopVideoRef.current?.srcObject as MediaStream | null;
-        mobileStream?.getTracks().forEach(t => t.stop());
-        desktopStream?.getTracks().forEach(t => t.stop());
-        
+        if (isEndingSessionRef.current) return;
+
+        isEndingSessionRef.current = true;
+        setIsEndingSession(true);
+        isFetchingRef.current = true;
+        setMobileDrawerOpen(false);
+        stopLiveSessionResources();
+
         if (sessionId) {
-            // Collect comprehensive analytics
             const analytics = collectSessionAnalytics();
-            
-            await fetch(`/api/sessions/${sessionId}`, {
+            void fetch(`/api/sessions/${sessionId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
@@ -625,9 +645,13 @@ function InfoChip({ label, value }: { label: string; value: string | number }) {
                     durationSecs: timer,
                     metrics: analytics
                 }),
+                keepalive: true,
+            }).catch((e) => {
+                console.error("Session finalization error:", e);
             });
         }
-        router.push("/history");
+
+        router.replace("/history");
     };
 
     const collectSessionAnalytics = () => {
@@ -701,7 +725,8 @@ function InfoChip({ label, value }: { label: string; value: string | number }) {
                     <div className="flex items-center gap-2 min-w-0">
                         <button 
                             onClick={endSession} 
-                            className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors shrink-0"
+                            disabled={isEndingSession}
+                            className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             <ChevronLeft className="w-5 h-5" />
                         </button>
@@ -840,9 +865,10 @@ function InfoChip({ label, value }: { label: string; value: string | number }) {
                                         </div>
                                         <button
                                             onClick={endSession}
-                                            className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-500 font-semibold transition-all text-sm"
+                                            disabled={isEndingSession}
+                                            className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-500 font-semibold transition-all text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                         >
-                                            End Session
+                                            {isEndingSession ? "Ending..." : "End Session"}
                                         </button>
                                     </div>
                                 )}
@@ -954,7 +980,7 @@ function InfoChip({ label, value }: { label: string; value: string | number }) {
                     <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-white/10 bg-linear-to-b from-slate-950 to-slate-900/70">
                         <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-3 min-w-0">
-                                <button onClick={endSession} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors shrink-0">
+                                <button onClick={endSession} disabled={isEndingSession} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors shrink-0 disabled:opacity-60 disabled:cursor-not-allowed">
                                     <ChevronLeft className="w-6 h-6" />
                                 </button>
                                 <div className="min-w-0">
@@ -1137,9 +1163,10 @@ function InfoChip({ label, value }: { label: string; value: string | number }) {
                             <div className="p-5 sm:p-6 mt-auto border-t border-white/10">
                                 <button 
                                     onClick={endSession}
-                                    className="w-full py-4 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-shadow transition-all hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(244,63,94,0.3)]"
+                                    disabled={isEndingSession}
+                                    className="w-full py-4 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-shadow transition-all hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(244,63,94,0.3)] disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                    End Session
+                                    {isEndingSession ? "Ending..." : "End Session"}
                                 </button>
                             </div>
                         </div>
