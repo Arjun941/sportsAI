@@ -219,24 +219,33 @@ export default function SessionView({ activity }: SessionViewProps) {
 
                         const ctx = canvas.getContext("2d");
                         if (ctx) {
-                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            // Draw Video and Landmarks in the same transformed context
+                            ctx.save();
+                            if (facingMode === "user") {
+                                ctx.translate(canvas.width, 0);
+                                ctx.scale(-1, 1);
+                            }
                             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+                            // Run MediaPipe
                             if (poseLandmarkerRef.current) {
                                 const results = poseLandmarkerRef.current.detectForVideo(video, performance.now());
                                 if (results.landmarks && results.landmarks[0]) {
                                     const landmarks = results.landmarks[0];
                                     lastLandmarksRef.current = landmarks;
-
-                                    checkReps(landmarks);
+                                    
+                                    // Draw Skeleton (inside the mirrored context if applicable)
                                     const drawingUtils = new DrawingUtils(ctx);
                                     drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: activity.color || "#06b6d4", lineWidth: 3 });
                                     drawingUtils.drawLandmarks(landmarks, { color: "#ffffff", lineWidth: 2, radius: 4 });
 
+                                    // Simple Rep Counter
                                     checkReps(landmarks);
                                 }
                             }
+                            ctx.restore();
 
+                            // Buffer frames for Gemini (every ~1s)
                             if (Date.now() - (processFrame as any).lastCapture > 1000) {
                                 (processFrame as any).lastCapture = Date.now();
                                 bufferRawFrame(video);
