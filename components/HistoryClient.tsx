@@ -33,6 +33,15 @@ export default function HistoryClient({ sessions }: HistoryClientProps) {
         setTimeout(() => setSelectedSession(null), 300);
     };
 
+    const formatDate = (value: string) => {
+        return new Intl.DateTimeFormat("en-US", {
+            year: "numeric",
+            month: "numeric",
+            day: "numeric",
+            timeZone: "UTC",
+        }).format(new Date(value));
+    };
+
     return (
         <>
             {sessions.map((session: SessionData) => (
@@ -46,7 +55,7 @@ export default function HistoryClient({ sessions }: HistoryClientProps) {
                             <div className="flex gap-4 mt-2 text-sm text-slate-400 flex-wrap">
                                 <span className="flex items-center gap-1.5">
                                     <CalendarDays className="w-4 h-4" />
-                                    {new Date(session.startedAt).toLocaleDateString()}
+                                    {formatDate(session.startedAt)}
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                     <Clock className="w-4 h-4" />
@@ -134,7 +143,7 @@ export default function HistoryClient({ sessions }: HistoryClientProps) {
                     session={{
                         sessionId: selectedSession.sessionId,
                         activityName: selectedSession.activityName,
-                        date: new Date(selectedSession.startedAt).toLocaleDateString(),
+                        date: formatDate(selectedSession.startedAt),
                         duration: selectedSession.durationSecs || 0,
                         reps: selectedSession.repCount,
                         metrics: selectedSession.metrics,

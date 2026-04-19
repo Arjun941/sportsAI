@@ -33,6 +33,7 @@ export default function SessionView({ activity }: SessionViewProps) {
     const [cadence, setCadence] = useState(0);
     const [autoSimulate, setAutoSimulate] = useState(true);
     const lastRepCountRef = useRef(0);
+    const hasStartedSessionRef = useRef(false);
 
     // Real-time Fitness Feedback
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -52,7 +53,9 @@ export default function SessionView({ activity }: SessionViewProps) {
     const poseQualityRef = useRef<number>(0);
 
     useEffect(() => {
-        // Start Session API
+        if (hasStartedSessionRef.current) return;
+        hasStartedSessionRef.current = true;
+
         fetch("/api/sessions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -61,9 +64,12 @@ export default function SessionView({ activity }: SessionViewProps) {
         .then(res => res.json())
         .then(data => {
             if (data.session_id) setSessionId(data.session_id);
+            else hasStartedSessionRef.current = false;
+        })
+        .catch(() => {
+            hasStartedSessionRef.current = false;
         });
 
-        // Timer
         const interval = setInterval(() => setTimer(t => t + 1), 1000);
         return () => clearInterval(interval);
     }, [activity]);
@@ -73,61 +79,47 @@ export default function SessionView({ activity }: SessionViewProps) {
         if (!autoSimulate) return;
         
         const interval = setInterval(() => {
-            // Simulate HR based on rep activity
             const repsSinceLastCheck = repCount - lastRepCountRef.current;
             lastRepCountRef.current = repCount;
             
-            // If reps happened, spike HR
             setHeartRate(prevHR => {
                 let newHR = prevHR;
                 if (repsSinceLastCheck > 0) {
-                    // Each rep adds ~2-4 BPM
                     newHR += repsSinceLastCheck * (2 + Math.random() * 2);
-                    // Cap at 190
                     newHR = Math.min(190, newHR);
                 } else {
-                    // Gradual recovery when not active (drop 1-2 BPM every 3 seconds)
                     newHR -= Math.random() * 2;
                     newHR = Math.max(60, Math.min(newHR, 190));
                 }
                 return newHR;
             });
             
-            // Simulate SpO2 (dips slightly during high effort, recovers quickly)
             setSpo2(prevSpo2 => {
                 if (heartRate > 150) {
-                    // At high HR, SpO2 dips slightly
                     return Math.max(90, prevSpo2 - Math.random() * 1);
                 } else {
-                    // At rest, recovers toward 98
                     return Math.min(99, prevSpo2 + Math.random() * 0.5);
                 }
             });
             
-            // Simulate cadence based on form velocity
             if (angleHistoryRef.current.length > 0) {
-                const recentVelocity = angleHistoryRef.current[angleHistoryRef.current.length - 1].velocity || 0;
-                // Rough cadence calc: assume 1 rep = ~1 second at normal speed
-                // velocity in degrees/sec, map to reps/min
                 const estimatedCadence = (repCount / Math.max(timer, 1)) * 60;
                 setCadence(Math.round(Math.max(0, estimatedCadence)));
             }
-        }, 3000); // Update every 3 seconds
+        }, 3000);
         
         return () => clearInterval(interval);
-    }, [autoSimulate, repCount, timer, heartRate, angleHistoryRef]);
+    }, [autoSimulate, repCount, timer, heartRate]);
 
     // ===== NEW: Real-time Fitness Feedback Monitor =====
     useEffect(() => {
         const checkFitnessMetrics = async () => {
             const now = Date.now();
-            // Check every 5 seconds max
             if (now - lastFeedbackTimeRef.current < 5000) return;
 
             const hrChange = Math.abs(heartRate - previousHRRef.current);
             const spo2Change = Math.abs(spo2 - previousSpO2Ref.current);
 
-            // Only call if significant change
             if (hrChange > 8 || spo2Change > 2 || heartRate > 170 || spo2 < 90) {
                 try {
                     const response = await fetch("/api/fitness-feedback", {
@@ -158,7 +150,6 @@ export default function SessionView({ activity }: SessionViewProps) {
                             }
                         ]);
 
-                        // Auto-remove notification after 8 seconds
                         setTimeout(() => {
                             setNotifications(prev => prev.slice(1));
                         }, 8000);
@@ -185,7 +176,6 @@ export default function SessionView({ activity }: SessionViewProps) {
 
         async function setup() {
             try {
-                // 1. Init MediaPipe
                 const vision = await FilesetResolver.forVisionTasks(
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
                 );
@@ -200,7 +190,6 @@ export default function SessionView({ activity }: SessionViewProps) {
                 if (!active) return;
                 poseLandmarkerRef.current = landmarker;
 
-                // 2. Init Camera
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: false
@@ -217,14 +206,12 @@ export default function SessionView({ activity }: SessionViewProps) {
                     setIsLoading(false);
                 }
 
-                // 3. Start processing loop
                 const processFrame = () => {
                     if (!active) return;
                     
                     const video = videoRef.current;
                     const canvas = canvasRef.current;
                     if (video && canvas && video.readyState >= 2) {
-                        // Match canvas to video size
                         if (canvas.width !== video.videoWidth) {
                             canvas.width = video.videoWidth;
                             canvas.height = video.videoHeight;
@@ -232,67 +219,29 @@ export default function SessionView({ activity }: SessionViewProps) {
 
                         const ctx = canvas.getContext("2d");
                         if (ctx) {
-                            // Clear canvas
                             ctx.clearRect(0, 0, canvas.width, canvas.height);
-                            
-                            // Draw Video
-                            ctx.save();
-                            if (facingMode === "user") {
-                                ctx.translate(canvas.width, 0);
-                                ctx.scale(-1, 1);
-                            }
                             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                            ctx.restore();
 
-                            // Run MediaPipe
                             if (poseLandmarkerRef.current) {
                                 const results = poseLandmarkerRef.current.detectForVideo(video, performance.now());
                                 if (results.landmarks && results.landmarks[0]) {
-                                    let landmarks = results.landmarks[0];
+                                    const landmarks = results.landmarks[0];
                                     lastLandmarksRef.current = landmarks;
-                                    
-                                    // Apply mirroring to landmarks for consistent angle calculation
-                                    let landmarksForAnalysis = landmarks;
-                                    if (facingMode === "user") {
-                                        landmarksForAnalysis = landmarks.map(lm => ({
-                                            ...lm,
-                                            x: 1 - lm.x
-                                        }));
-                                    }
 
-                                    // Check reps with mirrored landmarks
-                                    checkReps(landmarksForAnalysis);
-                                    
-                                    // Draw Skeleton directly without flipping coordinate space
-                                    ctx.save();
-                                    if (facingMode === "user") {
-                                        // Mirror the landmarks for display consistency
-                                        const mirroredLandmarks = landmarks.map(lm => ({
-                                            ...lm,
-                                            x: 1 - lm.x
-                                        }));
-                                        const drawingUtils = new DrawingUtils(ctx);
-                                        drawingUtils.drawConnectors(mirroredLandmarks, PoseLandmarker.POSE_CONNECTIONS, { color: activity.color || "#06b6d4", lineWidth: 3 });
-                                        drawingUtils.drawLandmarks(mirroredLandmarks, { color: "#ffffff", lineWidth: 2, radius: 4 });
-                                    } else {
-                                        const drawingUtils = new DrawingUtils(ctx);
-                                        drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: activity.color || "#06b6d4", lineWidth: 3 });
-                                        drawingUtils.drawLandmarks(landmarks, { color: "#ffffff", lineWidth: 2, radius: 4 });
-                                    }
-                                    ctx.restore();
+                                    checkReps(landmarks);
+                                    const drawingUtils = new DrawingUtils(ctx);
+                                    drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: activity.color || "#06b6d4", lineWidth: 3 });
+                                    drawingUtils.drawLandmarks(landmarks, { color: "#ffffff", lineWidth: 2, radius: 4 });
 
-                                    // Simple Rep Counter
                                     checkReps(landmarks);
                                 }
                             }
 
-                            // Buffer frames for Gemini (every ~1s)
                             if (Date.now() - (processFrame as any).lastCapture > 1000) {
                                 (processFrame as any).lastCapture = Date.now();
                                 bufferRawFrame(video);
                             }
 
-                            // Send to Gemini gently (wait at least 8 seconds, don't overlap if speaking)
                             if (Date.now() - lastApiCallTimeRef.current > 8000 && framesBufferRef.current.length > 0) {
                                 if (window.speechSynthesis && !window.speechSynthesis.speaking && !isFetchingRef.current) {
                                     sendToCoach();
@@ -346,7 +295,6 @@ export default function SessionView({ activity }: SessionViewProps) {
         lastApiCallTimeRef.current = Date.now();
         isFetchingRef.current = true;
         
-        // Calculate form score and movement metrics
         const formData = calculateFormScore(lastLandmarksRef.current);
         const metrics = calculateMovementMetrics();
         const repDuration = angleHistoryRef.current.length > 0
@@ -362,20 +310,16 @@ export default function SessionView({ activity }: SessionViewProps) {
                 frames: framesBufferRef.current,
                 landmarks: [lastLandmarksRef.current],
                 sessionId,
-                // NEW: Movement context
                 currentRepPhase: repStateRef.current.stage,
                 repNumber: repStateRef.current.repCount || 0,
                 repDuration: repDuration,
                 velocity: metrics.velocity,
                 acceleration: metrics.acceleration,
-                // NEW: Form quality
                 formScore: formData.score,
                 angleBreakdowns: formData.breakdowns,
                 poseQuality: poseQualityRef.current,
-                // NEW: Rep quality flags
                 isIncompleteRep: metrics.isIncomplete,
                 isTooFast: metrics.isTooFast,
-                // Fitness data
                 fitnessData: { heart_rate: heartRate, spo2, cadence }
             })
         })
@@ -383,7 +327,7 @@ export default function SessionView({ activity }: SessionViewProps) {
         .then(data => {
             if (data.text) {
                 setFeedback(data.text);
-                speak(data.text);
+                speakFeedback(data.text);
             }
         })
         .finally(() => {
@@ -391,18 +335,87 @@ export default function SessionView({ activity }: SessionViewProps) {
         });
     };
 
-    const speak = (text: string) => {
+    const speakFeedback = (text: string) => {
         if (!("speechSynthesis" in window)) return;
         speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = 1.05;
         utterance.pitch = 1.0;
-        
-        // Prevent Chrome SpeechSynthesis garbage collection bug
         (window as any)._utterance = utterance;
-        
         speechSynthesis.speak(utterance);
     };
+
+function StatPill({ label, value, tone }: { label: string; value: string; tone: "rose" | "emerald" | "blue" }) {
+    const toneMap = {
+        rose: "from-rose-500/18 to-rose-500/8 border-rose-500/20 text-rose-100",
+        emerald: "from-emerald-500/18 to-emerald-500/8 border-emerald-500/20 text-emerald-100",
+        blue: "from-cyan-500/18 to-cyan-500/8 border-cyan-500/20 text-cyan-100",
+    };
+
+    return (
+        <div className={`rounded-2xl border bg-linear-to-b px-4 py-3 backdrop-blur ${toneMap[tone]}`}>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-slate-300">{label}</div>
+            <div className="mt-1 text-lg sm:text-xl font-black leading-none">{value}</div>
+        </div>
+    );
+}
+
+function MetricTile({ icon: Icon, label, value, tone }: { icon: any; label: string; value: number; tone: "rose" | "emerald" | "blue" }) {
+    const toneMap = {
+        rose: "text-rose-400",
+        emerald: "text-emerald-400",
+        blue: "text-cyan-400",
+    };
+
+    return (
+        <div className="bg-white/5 border border-white/10 p-3 rounded-2xl text-center">
+            <Icon className={`w-4 h-4 mx-auto mb-1 ${toneMap[tone]}`} />
+            <div className="text-lg font-black font-mono text-slate-100">{value}</div>
+            <div className="text-[9px] text-slate-400 uppercase tracking-wider">{label}</div>
+        </div>
+    );
+}
+
+function SliderControl({
+    label,
+    value,
+    min,
+    max,
+    onChange,
+}: {
+    label: string;
+    value: number;
+    min: number;
+    max: number;
+    tone: "rose" | "emerald" | "blue";
+    onChange: (value: number) => void;
+}) {
+    return (
+        <div>
+            <label className="text-xs font-medium text-slate-400 flex justify-between mb-1">
+                <span>{label}</span>
+                <span className="text-cyan-300">{value}</span>
+            </label>
+            <input
+                type="range"
+                min={min}
+                max={max}
+                value={value}
+                onChange={(e) => onChange(Number(e.target.value))}
+                className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+            />
+        </div>
+    );
+}
+
+function InfoChip({ label, value }: { label: string; value: string | number }) {
+    return (
+        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">{label}</div>
+            <div className="mt-1 text-sm font-semibold text-slate-100 truncate">{value}</div>
+        </div>
+    );
+}
 
     // ===== NEW: Pose Quality Analysis =====
     const getPoseQuality = (landmarks: NormalizedLandmark[]): number => {
@@ -651,72 +664,89 @@ export default function SessionView({ activity }: SessionViewProps) {
     };
 
     return (
-        <div className="flex flex-col lg:grid lg:grid-cols-[1fr_380px] h-screen bg-black text-slate-100 overflow-hidden">
+        <div className="min-h-screen bg-[#040812] text-slate-100 p-2 sm:p-3 lg:p-4">
             {/* Real-time Fitness Feedback */}
             <RealtimeFeedback notifications={notifications} />
-            {/* Top Bar (Mobile overlapping, Desktop spanning) */}
-            <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent lg:static lg:col-span-2 lg:bg-slate-900/50 lg:border-b lg:border-white/10">
-                <div className="flex items-center gap-3">
-                    <button onClick={endSession} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
-                        <ChevronLeft className="w-6 h-6" />
-                    </button>
-                    <div>
-                        <h1 className="font-bold text-lg hidden sm:block">{activity.name}</h1>
-                        <span className="bg-cyan-500/20 text-cyan-400 text-xs font-bold px-2 py-0.5 rounded uppercase tracking-wider">{activity.category}</span>
-                    </div>
-                </div>
-                
-                <div className="flex items-center gap-4">
-                    <div className="bg-black/40 backdrop-blur border border-white/10 px-4 py-1.5 rounded-lg flex items-center gap-2">
-                        <Timer className="w-4 h-4 text-cyan-400" />
-                        <span className="font-mono font-bold text-lg">{formatTime(timer)}</span>
-                    </div>
-                    <button onClick={() => setFacingMode(f => f === "user" ? "environment" : "user")} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
-                        <Camera className="w-5 h-5" />
-                    </button>
-                    <ProfileButton />
-                </div>
-            </div>
-
-            {/* Video Area */}
-            <div className="relative w-full h-full lg:col-start-1 lg:row-start-2 bg-black flex items-center justify-center overflow-hidden">
-                <video ref={videoRef} playsInline muted className="hidden" />
-                <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-contain" />
-                
-                {isLoading && (
-                    <div className="absolute inset-0 bg-black/90 z-10 flex flex-col items-center justify-center">
-                        <div className="w-12 h-12 border-4 border-white/10 border-t-cyan-400 rounded-full animate-spin mb-4" />
-                        <p className="text-slate-400 font-medium">Starting MediaPipe AI...</p>
-                    </div>
-                )}
-
-                {/* Rep counter overlay */}
-                {activity.rep_config && (
-                    <div className="absolute top-20 right-6 z-10 text-center">
-                        <div className="text-6xl font-black text-white drop-shadow-[0_0_20px_rgba(6,182,212,0.6)]">
-                            {repCount}
+            <div className="mx-auto max-w-screen-2xl h-[calc(100vh-1rem)] sm:h-[calc(100vh-1.5rem)] grid grid-rows-[auto_minmax(0,1fr)] rounded-3xl border border-white/10 bg-slate-950/85 backdrop-blur-xl overflow-hidden shadow-[0_25px_90px_rgba(0,0,0,0.45)]">
+                {/* Header */}
+                <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-white/10 bg-linear-to-b from-slate-950 to-slate-900/70">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <button onClick={endSession} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors shrink-0">
+                                <ChevronLeft className="w-6 h-6" />
+                            </button>
+                            <div className="min-w-0">
+                                <h1 className="font-bold text-lg sm:text-2xl leading-tight truncate">{activity.name}</h1>
+                                <span className="inline-block mt-1 bg-cyan-500/20 text-cyan-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-cyan-500/25">
+                                    {activity.category}
+                                </span>
+                            </div>
                         </div>
-                        <div className="text-[10px] font-bold text-cyan-400 uppercase tracking-[0.2em]">Reps</div>
-                    </div>
-                )}
-            </div>
 
-            {/* Sidebar / Bottom area */}
-            <div className="flex flex-col lg:col-start-2 lg:row-start-2 bg-slate-900 border-t lg:border-t-0 lg:border-l border-white/10 z-20 z-index-20 max-h-[40vh] lg:max-h-none overflow-y-auto">
-                
-                {/* Coach Banner */}
-                <div className="p-6 bg-cyan-950/20 border-b border-cyan-500/10">
-                    <div className="flex items-center gap-2 text-xs font-bold text-cyan-400 uppercase tracking-widest mb-3">
-                        <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                        AI Coach
+                        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                            <div className="bg-black/35 backdrop-blur border border-white/10 px-3 py-2 rounded-xl flex items-center gap-2">
+                                <Timer className="w-4 h-4 text-cyan-400" />
+                                <span className="font-mono font-bold text-base sm:text-lg leading-none">{formatTime(timer)}</span>
+                            </div>
+                            <button
+                                onClick={() => setFacingMode(f => f === "user" ? "environment" : "user")}
+                                className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+                                title="Flip camera"
+                            >
+                                <Camera className="w-5 h-5" />
+                            </button>
+                            <ProfileButton />
+                        </div>
                     </div>
-                    <p className="text-[15px] leading-relaxed text-slate-200">
-                        "{feedback}"
-                    </p>
                 </div>
 
-                {/* Fitness Simulator */}
-                <div className="p-6 border-b border-white/5">
+                {/* Main Content */}
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] min-h-0">
+                    {/* Video Area */}
+                    <div className="relative min-h-0 bg-black">
+                        <div className="absolute inset-0 p-2 sm:p-3">
+                            <div className="relative w-full h-full rounded-2xl overflow-hidden bg-black border border-white/10">
+                                <video ref={videoRef} playsInline muted className="hidden" />
+                                <canvas
+                                    ref={canvasRef}
+                                    className="absolute inset-0 w-full h-full object-contain"
+                                    style={{ transform: facingMode === "user" ? "scaleX(-1)" : "none", transformOrigin: "center" }}
+                                />
+
+                                {isLoading && (
+                                    <div className="absolute inset-0 bg-black/90 z-10 flex flex-col items-center justify-center">
+                                        <div className="w-12 h-12 border-4 border-white/10 border-t-cyan-400 rounded-full animate-spin mb-4" />
+                                        <p className="text-slate-400 font-medium">Starting MediaPipe AI...</p>
+                                    </div>
+                                )}
+
+                                {activity.rep_config && (
+                                    <div className="absolute top-4 right-4 sm:top-5 sm:right-5 z-10 text-center bg-black/35 backdrop-blur border border-white/10 rounded-2xl px-4 py-3">
+                                        <div className="text-5xl sm:text-6xl font-black text-white drop-shadow-[0_0_20px_rgba(6,182,212,0.6)] leading-none">
+                                            {repCount}
+                                        </div>
+                                        <div className="mt-1 text-[10px] font-bold text-cyan-400 uppercase tracking-[0.2em]">Reps</div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Sidebar */}
+                    <div className="flex flex-col min-h-0 bg-slate-900 border-t xl:border-t-0 xl:border-l border-white/10 overflow-hidden">
+                        {/* Coach Banner */}
+                        <div className="p-5 sm:p-6 bg-cyan-950/20 border-b border-cyan-500/10">
+                            <div className="flex items-center gap-2 text-xs font-bold text-cyan-400 uppercase tracking-widest mb-3">
+                                <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                                AI Coach
+                            </div>
+                            <p className="text-[15px] leading-relaxed text-slate-200">
+                                "{feedback}"
+                            </p>
+                        </div>
+
+                        {/* Fitness Simulator */}
+                        <div className="p-5 sm:p-6 border-b border-white/5 overflow-y-auto">
                     <div className="flex items-center justify-between mb-4">
                         <button 
                             onClick={() => setSimOpen(!simOpen)}
@@ -821,14 +851,16 @@ export default function SessionView({ activity }: SessionViewProps) {
                     )}
                 </div>
 
-                {/* End Session Button */}
-                <div className="p-6 mt-auto">
-                    <button 
-                        onClick={endSession}
-                        className="w-full py-4 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-shadow transition-all hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(244,63,94,0.3)]"
-                    >
-                        End Session
-                    </button>
+                        {/* End Session Button */}
+                        <div className="p-5 sm:p-6 mt-auto border-t border-white/10">
+                            <button 
+                                onClick={endSession}
+                                className="w-full py-4 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-shadow transition-all hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(244,63,94,0.3)]"
+                            >
+                                End Session
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

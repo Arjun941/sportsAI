@@ -8,15 +8,13 @@ export async function GET(req: NextRequest) {
         
         // Get userId from query params or cookies
         const userId = req.nextUrl.searchParams.get("userId") || "default-user";
-        
-        let profile = await UserProfile.findOne({ userId }).lean();
-        
-        if (!profile) {
-            // Create default profile if doesn't exist
-            const newProfile = new UserProfile({ userId });
-            profile = await newProfile.save();
-        }
-        
+
+        const profile = await UserProfile.findOneAndUpdate(
+            { userId },
+            { $setOnInsert: { userId } },
+            { upsert: true, returnDocument: "after" }
+        ).lean();
+
         return NextResponse.json(profile);
     } catch (e) {
         console.error("Profile fetch error:", e);
@@ -34,7 +32,7 @@ export async function PUT(req: NextRequest) {
         const profile = await UserProfile.findOneAndUpdate(
             { userId: userId || "default-user" },
             { ...updates, updatedAt: new Date() },
-            { new: true, upsert: true }
+            { upsert: true, returnDocument: "after" }
         ).lean();
         
         return NextResponse.json(profile);
