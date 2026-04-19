@@ -44,6 +44,11 @@ export async function POST(req: NextRequest) {
             currentRepPhase, repNumber, repDuration, velocity, acceleration,
             formScore, angleBreakdowns, poseQuality, isIncompleteRep, isTooFast
         } = body as CoachRequestBody;
+        const safePoseQuality = poseQuality ?? 0;
+        const safeFormScore = formScore ?? 0;
+        const safeVelocity = velocity ?? 0;
+        const safeAcceleration = acceleration ?? 0;
+        const safeRepDuration = repDuration ?? 0;
 
         const activity = getActivity(activityId);
         if (!activity) {
@@ -57,8 +62,8 @@ export async function POST(req: NextRequest) {
             prompt.push(
                 `--- CURRENT REP CONTEXT ---\n` +
                 `Rep #: ${repNumber} | Phase: ${currentRepPhase.toUpperCase()}\n` +
-                `Duration: ${repDuration}ms | Velocity: ${velocity}°/sec | Acceleration: ${acceleration}°/sec²\n` +
-                `Pose Quality: ${(poseQuality * 100).toFixed(0)}% | Form Score: ${(formScore * 100).toFixed(0)}%`
+                `Duration: ${safeRepDuration}ms | Velocity: ${safeVelocity}°/sec | Acceleration: ${safeAcceleration}°/sec²\n` +
+                `Pose Quality: ${(safePoseQuality * 100).toFixed(0)}% | Form Score: ${(safeFormScore * 100).toFixed(0)}%`
             );
         }
 
@@ -66,8 +71,8 @@ export async function POST(req: NextRequest) {
         const qualityIssues = [];
         if (isIncompleteRep) qualityIssues.push("incomplete range of motion");
         if (isTooFast) qualityIssues.push("moving too fast");
-        if (formScore < 0.7) qualityIssues.push("form breaking down");
-        if (poseQuality < 0.6) qualityIssues.push("low visibility");
+        if (safeFormScore < 0.7) qualityIssues.push("form breaking down");
+        if (safePoseQuality < 0.6) qualityIssues.push("low visibility");
         
         if (qualityIssues.length > 0) {
             prompt.push(`⚠ QUALITY FLAGS: ${qualityIssues.join(", ")}`);
