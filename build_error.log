@@ -1,0 +1,86 @@
+
+> next@0.1.0 build
+> next build
+
+▲ Next.js 16.2.4 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+Error: Cannot apply unknown utility class `backdrop-blur-md`. Are you using CSS modules or similar and missing `@reference`? https://tailwindcss.com/docs/functions-and-directives#reference-directive
+    [2m[at onInvalidCandidate (D:\sports-cv\next\node_modules\tailwindcss\dist\lib.js:21:1314)][0m
+    [2m[at Ee (D:\sports-cv\next\node_modules\tailwindcss\dist\lib.js:16:37066)][0m
+    [2m[at D:\sports-cv\next\node_modules\tailwindcss\dist\lib.js:21:355][0m
+    [2m[at _r (D:\sports-cv\next\node_modules\tailwindcss\dist\lib.js:3:1733)][0m
+    [2m[at I (D:\sports-cv\next\node_modules\tailwindcss\dist\lib.js:3:1377)][0m
+    [2m[at Te (D:\sports-cv\next\node_modules\tailwindcss\dist\lib.js:21:172)][0m
+    [2m[at mn (D:\sports-cv\next\node_modules\tailwindcss\dist\lib.js:38:294)][0m
+    [2m[at process.processTicksAndRejections (node:internal/process/task_queues:95:5)][0m
+    [2m[at async gn (D:\sports-cv\next\node_modules\tailwindcss\dist\lib.js:38:631)][0m
+    [2m[at async Xr (D:\sports-cv\next\node_modules\@tailwindcss\node\dist\index.js:10:3416)][0m
+
+> Build error occurred
+Error: Turbopack build failed with 3 errors:
+./app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: D:\sports-cv\next\app\globals.css:1:1: Cannot apply unknown utility class `backdrop-blur-md`. Are you using CSS modules or similar and missing `@reference`? https://tailwindcss.com/docs/functions-and-directives#reference-directive
+    at Input.error (node_modules/postcss/lib/input.js:135:16) [D:\sports-cv\next\.next\build\chunks\node_modules_13sb.px._.js:4667:22]
+    at error (node_modules/postcss/lib/node.js:146:32) [D:\sports-cv\next\.next\build\chunks\node_modules_13sb.px._.js:943:38]
+    [at Object.Once (D:\sports-cv\next\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+    [at process.processTicksAndRejections (node:internal/process/task_queues:95:5)]
+    at async LazyResult.runAsync (node_modules/postcss/lib/lazy-result.js:293:11) [D:\sports-cv\next\.next\build\chunks\node_modules_13sb.px._.js:6230:21]
+    at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34) [D:\sports-cv\next\.next\build\chunks\[root-of-the-server]__0d-m0h0._.js:146:36]
+    at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23) [D:\sports-cv\next\.next\build\chunks\[root-of-the-server]__0ubbtyl._.js:443:31]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component]
+
+
+./app/session/[id]/page.tsx:7:21
+`ssr: false` is not allowed with `next/dynamic` in Server Components. Please move it into a Client Component.
+  [90m 5 |[0m [90m// Dynamic import for the client component that uses MediaPipe[0m
+  [90m 6 |[0m [90m// ssr: false is REQUIRED because MediaPipe accesses window/document[0m
+[31m[1m>[0m [90m 7 |[0m [36mconst[0m [33mSessionView[0m = dynamic(() => [36mimport[0m([32m"@/components/SessionView"[0m), { 
+  [90m   |[0m                     [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m 8 |[0m     ssr: [36mfalse[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m 9 |[0m     loading: () => (
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m10 |[0m         <div className=[32m"min-h-screen bg-black flex flex-col items-center justify-center"[0m>
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m11 |[0m             <div className=[32m"w-12 h-12 border-4 border-white/10 border-t-cyan-400 rounded-f...[0m
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m12 |[0m             <p className=[32m"text-slate-400"[0m>[33mLoading[0m [33mAI[0m [33mEngine[0m...</p>
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m13 |[0m         </div>
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m14 |[0m     )
+  [90m   |[0m [31m[1m^^^^^[0m
+[31m[1m>[0m [90m15 |[0m });
+  [90m   |[0m [31m[1m^^[0m
+  [90m16 |[0m
+  [90m17 |[0m [36mexport[0m [36mdefault[0m [36mfunction[0m [33mSessionPage[0m({ params }: { params: { id: string } }) {
+  [90m18 |[0m     [36mconst[0m activity = getActivity(params.id);
+
+Ecmascript file had an error
+
+
+./app/page.tsx:2:1
+Export Activity3 doesn't exist in target module
+  [90m1 |[0m [36mimport[0m [33mLink[0m [36mfrom[0m [32m"next/link"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { [33mActivity3[0m, [33mHome[0m, [33mTrophy[0m } [36mfrom[0m [32m"lucide-react"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { getAllActivities } [36mfrom[0m [32m"@/lib/activities"[0m;
+  [90m4 |[0m [36mimport[0m { [33mActivityCard[0m } [36mfrom[0m [32m"@/components/ActivityCard"[0m;
+  [90m5 |[0m
+
+The export Activity3 was not found in module [project]/node_modules/lucide-react/dist/esm/lucide-react.js [app-rsc] (ecmascript).
+Did you mean to import Activity?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+    at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34) [D:\sports-cv\next\.next\build\chunks\[root-of-the-server]__0d-m0h0._.js:146:36])
+    at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23) [D:\sports-cv\next\.next\build\chunks\[root-of-the-server]__0ubbtyl._.js:443:31])
+    at <unknown> (./app/session/[id]/page.tsx:7:21)
+    at <unknown> (./app/page.tsx:2:1)
