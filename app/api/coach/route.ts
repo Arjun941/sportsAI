@@ -4,6 +4,35 @@ import { getActivity, LM } from "@/lib/activities";
 import connectToDatabase from "@/lib/mongodb";
 import Session from "@/lib/models/Session";
 
+type AngleBreakdown = {
+    name: string;
+    angle: number;
+    ideal: [number, number];
+    status: string;
+};
+
+type CoachRequestBody = {
+    activityId: string;
+    frames?: string[];
+    landmarks?: any[];
+    fitnessData?: {
+        heart_rate: number;
+        spo2: number;
+        cadence: number;
+    };
+    sessionId?: string;
+    currentRepPhase?: string;
+    repNumber?: number;
+    repDuration?: number;
+    velocity?: number;
+    acceleration?: number;
+    formScore?: number;
+    angleBreakdowns?: AngleBreakdown[];
+    poseQuality?: number;
+    isIncompleteRep?: boolean;
+    isTooFast?: boolean;
+};
+
 // Use the new GoogleGenAI SDK as required by the deprecation notice
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -14,7 +43,7 @@ export async function POST(req: NextRequest) {
             activityId, frames, landmarks, fitnessData, sessionId,
             currentRepPhase, repNumber, repDuration, velocity, acceleration,
             formScore, angleBreakdowns, poseQuality, isIncompleteRep, isTooFast
-        } = body;
+        } = body as CoachRequestBody;
 
         const activity = getActivity(activityId);
         if (!activity) {
@@ -47,7 +76,7 @@ export async function POST(req: NextRequest) {
         // ===== NEW: Use breakdown data if available =====
         if (angleBreakdowns && angleBreakdowns.length > 0) {
             const breakdownLines = angleBreakdowns
-                .map(bd => `${bd.name}: ${bd.angle}° (ideal ${bd.ideal[0]}-${bd.ideal[1]}°) ${bd.status}`)
+                .map((bd: AngleBreakdown) => `${bd.name}: ${bd.angle}° (ideal ${bd.ideal[0]}-${bd.ideal[1]}°) ${bd.status}`)
                 .join("\n");
             prompt.push(`--- FORM BREAKDOWN ---\n${breakdownLines}`);
         }

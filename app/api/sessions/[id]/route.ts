@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
 import Session from "@/lib/models/Session";
+import { generateAnalyticsInsightsText } from "@/lib/analyticsInsights";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -24,6 +25,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (metrics !== undefined) session.metrics = metrics;
         
         await session.save();
+
+        try {
+            const analyticsInsightsText = await generateAnalyticsInsightsText(session);
+            if (analyticsInsightsText) {
+                session.analyticsInsightsText = analyticsInsightsText;
+                session.analyticsInsightsGeneratedAt = new Date();
+                await session.save();
+            }
+        } catch (analyticsError) {
+            console.error("Analytics precompute error:", analyticsError);
+        }
         
         return NextResponse.json({ success: true, session });
     } catch (e) {
