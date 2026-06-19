@@ -99,10 +99,6 @@ lib/
 └── models/                            # Session & UserProfile schemas
 ```
 
-## A small heads-up
-
-There's a leftover `build_error.log` checked into the repo (a Tailwind build error from a past run) — harmless, but probably worth deleting and adding `*.log` to `.gitignore` if it's not already covered.
-
 ## License
 
 No license specified yet — so technically all rights reserved by default. Add one (MIT is the easy default) if you want others to freely use/fork this.
