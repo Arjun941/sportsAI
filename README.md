@@ -98,7 +98,3 @@ lib/
 ├── mongodb.ts                       # DB connection
 └── models/                            # Session & UserProfile schemas
 ```
-
-## License
-
-No license specified yet — so technically all rights reserved by default. Add one (MIT is the easy default) if you want others to freely use/fork this.
